@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 use std::field::bn254::decompose;
-use std::ops::{Add, Mul, Sub};
+use std::ops::{Add, Div, Mul, Sub};
 
 // IMPORTANT: This library is designed to work with a scale factor of 2^(8*factor).
 // See further explanation in the `Quantized` struct comments below.
@@ -150,6 +150,55 @@ impl Quantized {
         // Return the result as a new Quantized instance
         Quantized { x: new_x }
     }
+
+    fn div(self: Self, other: Self) -> Self {
+        // Ensure `other` is not zero
+        assert(other.x != 0, "Division by zero is not allowed.");
+
+        // Flip signs of numerator and denominator if negative, work with their absolute values
+        let mut numerator = self.x;
+        let mut denominator = other.x;
+
+        let mut numerator_is_negative = is_negative(numerator);
+        let mut denominator_is_negative = is_negative(denominator);
+
+        if numerator_is_negative == 1 {
+            numerator = 21888242871839275222246405745257275088548364400416034343698204186575808495616
+                - numerator
+                + 1;
+        }
+
+        if denominator_is_negative == 1 {
+            denominator = 21888242871839275222246405745257275088548364400416034343698204186575808495616
+                - denominator
+                + 1;
+        }
+
+        // Scale numerator before division
+        let scaled_numerator = numerator * scale;
+
+        // Cast to U128 for division
+        let scaled_numerator_u128 = U128::from_le_bytes(scaled_numerator.to_le_bytes());
+        let denominator_u128 = U128::from_le_bytes(denominator.to_le_bytes());
+
+        // Perform the division in U128
+        let result_u128 = scaled_numerator_u128 / denominator_u128;
+
+        // Cast back to Field
+        let mut result = Field::from_le_bytes(result_u128.to_le_bytes());
+
+        // Determine the sign of the result
+        let result_is_negative = numerator_is_negative + denominator_is_negative == 1;
+
+        // If result is negative, flip sign back
+        if result_is_negative {
+            result = 21888242871839275222246405745257275088548364400416034343698204186575808495616
+                - result
+                + 1;
+        }
+
+        Quantized { x: result }
+    }
 }
 
 impl Add for Quantized {
@@ -167,6 +216,12 @@ impl Sub for Quantized {
 impl Mul for Quantized {
     fn mul(self, other: Self) -> Self {
         self.mul(other)
+    }
+}
+
+impl Div for Quantized {
+    fn div(self, other: Self) -> Self {
+        self.div(other)
     }
 }
 
@@ -391,4 +446,81 @@ fn test_sub() {
     let b2_quantized = Quantized { x: b2 };
     let addition2_quantized = a2_quantized + b2_quantized;
     assert(addition2_quantized.x == (a2 + b2));
+}
+
+#[test]
+fn test_division() {
+    // Field modulus
+    let p: Field = 0;
+
+    // Test case 1: Division with small positive values
+    let a1 = Quantized { x: 98304 }; // Represents 1.5 (scaled)
+    let b1 = Quantized { x: 65536 }; // Represents 1.0 (scaled)
+    let result1 = a1 / b1; // 1.5 / 1.0 = 1.5
+    assert(result1.x == 98304); // Scaled result for 1.5
+
+    // Test case 2: Division resulting in a smaller value
+    let a2 = Quantized { x: 65536 }; // Represents 1.0 (scaled)
+    let b2 = Quantized { x: 98304 }; // Represents 1.5 (scaled)
+    let result2 = a2 / b2; // 1.0 / 1.5 = 0.666...
+    assert(result2.x == 43690); // Scaled result for ~0.6667
+
+    // Test case 3: Negative divided by positive
+    let a3 = Quantized { x: p - 98304 }; // Represents -1.5 (scaled)
+    let b3 = Quantized { x: 65536 }; // Represents 1.0 (scaled)
+    let result3 = a3 / b3; // -1.5 / 1.0 = -1.5
+    assert(result3.x == p - 98304); // Correctly negative
+
+    // Test case 4: Positive divided by negative
+    let a4 = Quantized { x: 98304 }; // Represents 1.5 (scaled)
+    let b4 = Quantized { x: p - 65536 }; // Represents -1.0 (scaled)
+    let result4 = a4 / b4; // 1.5 / -1.0 = -1.5
+    assert(result4.x == p - 98304); // Correctly negative
+
+    // Test case 5: Both negative values
+    let a5 = Quantized { x: p - 98304 }; // Represents -1.5 (scaled)
+    let b5 = Quantized { x: p - 65536 }; // Represents -1.0 (scaled)
+    let result5 = a5 / b5; // -1.5 / -1.0 = 1.5
+    assert(result5.x == 98304); // Scaled result for 1.5
+}
+
+#[test]
+fn test_large_values_division() {
+    // Field modulus
+    let p: Field = 0;
+
+    // Test case 1: Large positive values
+    let a1 = Quantized { x: 1152921504606846976 }; // Represents 17592186044416.0 (scaled)
+    let b1 = Quantized { x: 576460752303423488 }; // Represents 8796093022208.0 (scaled)
+    let result1 = a1 / b1; // 17592186044416.0 / 8796093022208.0 = 2.0
+    assert(result1.x == 131072); // Scaled result for 2.0
+
+    // Test case 2: Large positive divided by a larger positive
+    let a2 = Quantized { x: 576460752303423488 }; // Represents 8796093022208.0 (scaled)
+    let b2 = Quantized { x: 1152921504606846976 }; // Represents 17592186044416.0 (scaled)
+    let result2 = a2 / b2; // 8796093022208.0 / 17592186044416.0 = 0.5
+    assert(result2.x == 32768); // Scaled result for 0.5
+
+    // Test case 3: Large negative divided by large positive
+    let a3 = Quantized { x: p - 1152921504606846976 }; // Represents -17592186044416.0 (scaled)
+    let b3 = Quantized { x: 576460752303423488 }; // Represents 8796093022208.0 (scaled)
+    let result3 = a3 / b3; // -17592186044416.0 / 8796093022208.0 = -2.0
+    assert(result3.x == p - 131072); // Correctly negative
+
+    // Test case 4: Large positive divided by large negative
+    let a4 = Quantized { x: 1152921504606846976 }; // Represents 17592186044416.0 (scaled)
+    let b4 = Quantized { x: p - 576460752303423488 }; // Represents -8796093022208.0 (scaled)
+    let result4 = a4 / b4; // 17592186044416.0 / -8796093022208.0 = -2.0
+    assert(result4.x == p - 131072); // Correctly negative
+
+    // Test case 5: Both large negative values
+    let a5 = Quantized { x: p - 1152921504606846976 }; // Represents -17592186044416.0 (scaled)
+    let b5 = Quantized { x: p - 576460752303423488 }; // Represents -8796093022208.0 (scaled)
+    let result5 = a5 / b5; // -17592186044416.0 / -8796093022208.0 = 2.0
+    assert(result5.x == 131072); // Scaled result for 2.0
+}
+
+#[test(should_fail)]
+fn test_division_by_zero() -> Quantized {
+    Quantized { x: 65536 } / Quantized { x: 0 }
 }
