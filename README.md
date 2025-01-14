@@ -42,11 +42,10 @@ cargo test
 
 ## Benchmarks
 
-
 Gatecounts: 
 Addition & subtraction: 17.
-Multiplication: 3229
-Division: 3289.
+Multiplication: 2922
+Division: 3285.
 Ordering: 2789. 
 
 Rerun benchmarks in folder `benchmarks`.

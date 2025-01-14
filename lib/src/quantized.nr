@@ -110,25 +110,20 @@ impl Quantized {
         // Check whether we're working with a negative value
         let negative = is_negative(temp);
 
-        // If the result is negative, flip its sign to work with the positive equivalent
-        if negative == 1 {
-            temp = 21888242871839275222246405745257275088548364400416034343698204186575808495616
-                - temp
-                + 1;
-            unsafe {
-                bytes = get_bytes(temp);
-            }
+        temp = negative
+            * (
+                21888242871839275222246405745257275088548364400416034343698204186575808495616 - temp
+                    + 1
+                    - temp
+            )
+            + temp;
 
-            // Ensure the new bytes representation matches the modified field element
-            assert(Field::from_be_bytes::<32>(bytes) == temp);
-        } else {
-            unsafe {
-                bytes = get_bytes(temp);
-            }
-
-            // Verify that the bytes representation matches the original field element
-            assert(Field::from_be_bytes::<32>(bytes) == temp);
+        unsafe {
+            bytes = get_bytes(temp);
         }
+
+        // Ensure the new bytes representation matches the field element
+        assert(Field::from_be_bytes::<32>(bytes) == temp);
 
         // Truncate the bytes to scale down by 2^(8 * factor)
         // This effectively "chops off" the least significant <factor> bytes
@@ -141,11 +136,14 @@ impl Quantized {
         let mut new_x: Field = Field::from_be_bytes::<32>(truncated);
 
         // If the result was originally negative, flip the sign back
-        if negative == 1 {
-            new_x = 21888242871839275222246405745257275088548364400416034343698204186575808495616
-                - new_x
-                + 1;
-        }
+        new_x = negative
+            * (
+                21888242871839275222246405745257275088548364400416034343698204186575808495616
+                    - new_x
+                    + 1
+                    - new_x
+            )
+            + new_x;
 
         // Return the result as a new Quantized instance
         Quantized { x: new_x }
@@ -162,17 +160,23 @@ impl Quantized {
         let mut numerator_is_negative = is_negative(numerator);
         let mut denominator_is_negative = is_negative(denominator);
 
-        if numerator_is_negative == 1 {
-            numerator = 21888242871839275222246405745257275088548364400416034343698204186575808495616
-                - numerator
-                + 1;
-        }
+        numerator = numerator_is_negative
+            * (
+                21888242871839275222246405745257275088548364400416034343698204186575808495616
+                    - numerator
+                    + 1
+                    - numerator
+            )
+            + numerator;
 
-        if denominator_is_negative == 1 {
-            denominator = 21888242871839275222246405745257275088548364400416034343698204186575808495616
-                - denominator
-                + 1;
-        }
+        denominator = denominator_is_negative
+            * (
+                21888242871839275222246405745257275088548364400416034343698204186575808495616
+                    - denominator
+                    + 1
+                    - denominator
+            )
+            + denominator;
 
         // Scale numerator before division
         let scaled_numerator = numerator * scale;

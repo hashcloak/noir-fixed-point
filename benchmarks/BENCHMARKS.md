@@ -15,6 +15,6 @@ $ bb gates -b target/project.json
 
 Gatecounts: 
 Addition & subtraction: 17.
-Multiplication: 3229
-Division: 3289.
+Multiplication: 2922
+Division: 3285.
 Ordering: 2789. 
