@@ -69,7 +69,7 @@ pub unconstrained fn get_bytes(x: Field) -> [u8; 32] {
 // Make sure that the value that the field contains has maximum ~127 bits
 // (otherwise a positive value will "overflow" into the higher bits, as well as a negative
 // value would overflow into lower bits)
-fn is_negative(x: Field) -> Field {
+pub fn is_negative(x: Field) -> Field {
     let (_, higher_bytes) = decompose(x);
     if higher_bytes == 0 {
         0
