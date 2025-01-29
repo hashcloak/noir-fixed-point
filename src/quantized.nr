@@ -60,10 +60,6 @@ pub struct Quantized {
     pub x: Field,
 }
 
-pub unconstrained fn get_bytes(x: Field) -> [u8; 32] {
-    x.to_be_bytes()
-}
-
 // returns 1 for true, 0 for false (checking for this is cheaper than working with a bool)
 // A Quantized element is negative if the upper bits are set, so this is what we check for.
 // Make sure that the value that the field contains has maximum ~127 bits
@@ -106,7 +102,6 @@ impl Quantized {
         // Note that we have to take care of the case that the value is negative; in that case we flip the sign
         // temporarily, and flip it back at the end. Otherwise the chopping won't work.
 
-        let mut bytes: [u8; 32] = [0; 32];
         // Check whether we're working with a negative value
         let negative = is_negative(temp);
 
@@ -118,12 +113,7 @@ impl Quantized {
             )
             + temp;
 
-        unsafe {
-            bytes = get_bytes(temp);
-        }
-
-        // Ensure the new bytes representation matches the field element
-        assert(Field::from_be_bytes::<32>(bytes) == temp);
+        let mut bytes: [u8; 32] = temp.to_be_bytes();
 
         // Truncate the bytes to scale down by 2^(8 * factor)
         // This effectively "chops off" the least significant <factor> bytes
