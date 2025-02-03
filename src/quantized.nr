@@ -35,8 +35,8 @@ global scale: Field = 65536; // 2^(8*2) = 2^16
 // - `Quantized { x: 1 }` represents the value 1/2^16.
 // - To represent an original value, divide it by the scale, truncate, and store the result.
 // Example:
-// - Original value: 0.001
-// - Scaled value: 0.001 * 2^16 = 65.536
+// - Original x: 0.001
+// - Scaled x: 0.001 * 2^16 = 65.536
 // - Truncated result: 65 (stored as `Quantized { x: 65 }`)
 //
 // Range and Precision:
@@ -57,51 +57,51 @@ global scale: Field = 65536; // 2^(8*2) = 2^16
 //   p = 21888242871839275222246405745257275088548364400416034343698204186575808495617
 // This prime comes from the Barretenberg backend.
 pub struct Quantized {
-    pub value: Field,
+    pub x: Field,
     pub is_negative: bool,
 }
 
 impl Quantized {
     pub fn zero() -> Self {
-        Quantized { value: 0, is_negative: false }
+        Quantized { x: 0, is_negative: false }
     }
 
-    pub fn new(value: Field, is_negative: bool) -> Self {
-        Self { value, is_negative }
+    pub fn new(x: Field, is_negative: bool) -> Self {
+        Self { x, is_negative }
     }
 
     fn add(self: Self, other: Self) -> Self {
         let mut result = Quantized::zero();
         if self.is_negative & other.is_negative {
-            result = Self { value: self.value - other.value, is_negative: true };
+            result = Self { x: self.x - other.x, is_negative: true };
         } else if self.is_negative {
-            if self.value.lt(other.value) {
-                result = Quantized { value: other.value - self.value, is_negative: false };
+            if self.x.lt(other.x) {
+                result = Quantized { x: other.x - self.x, is_negative: false };
             } else {
-                result = Quantized { value: self.value - other.value, is_negative: true };
+                result = Quantized { x: self.x - other.x, is_negative: true };
             }
         } else if other.is_negative {
-            if other.value.lt(self.value) {
-                result = Quantized { value: self.value - other.value, is_negative: false };
+            if other.x.lt(self.x) {
+                result = Quantized { x: self.x - other.x, is_negative: false };
             } else {
-                result = Quantized { value: other.value - self.value, is_negative: true };
+                result = Quantized { x: other.x - self.x, is_negative: true };
             }
         } else {
-            result = Quantized { value: other.value + self.value, is_negative: false }; // not doing this at the beginning in case there is overflow
+            result = Quantized { x: other.x + self.x, is_negative: false }; // not doing this at the beginning in case there is overflow
         }
         result
     }
 
     fn sub(self: Self, other: Self) -> Self {
-        let neg_other = Quantized { value: other.value, is_negative: !other.is_negative };
+        let neg_other = Quantized { x: other.x, is_negative: !other.is_negative };
         self.add(neg_other)
     }
 
     fn mul(self: Self, other: Self) -> Self {
-        let mult_result = (self.value * other.value); // U128 multiplication, will overflow if needed. Divide by 2^16 to adjust scaling
+        let mult_result = (self.x * other.x); // U128 multiplication, will overflow if needed. Divide by 2^16 to adjust scaling
         let sign = self.is_negative ^ other.is_negative; // XOR to determine sign
 
-        Quantized { value: mult_result, is_negative: sign }
+        Quantized { x: mult_result, is_negative: sign }
     }
 }
 
@@ -135,14 +135,14 @@ impl Ord for Quantized {
 
         if self.is_negative {
             // Both are negative numbers.
-            if self.value.lt(other.value) {
+            if self.x.lt(other.x) {
                 Ordering::greater()
             } else {
                 Ordering::less()
             }
         } else {
             // Both are possitive numbers.
-            if self.value.lt(other.value) {
+            if self.x.lt(other.x) {
                 Ordering::less()
             } else {
                 Ordering::greater()
