@@ -37,8 +37,8 @@ global scale: Field = 65536; // 2^16
 // To make sure the arithmetic performed on a value will not overflow, the library contains
 // bitsize checks that prevent numbers from growing larger than 126 bits. More concretely:
 // - multiplication: inputs must have bitsize <= 63
-// - addition:
-// - subtraction:
+// - addition: inputs must have bitsize <=125
+// - subtraction: inputs must have bitsize <=125
 //
 // Conversion Steps to `Quantized`:
 // 1. Check if the original value `x` is negative. If negative, use (p - |x|), where `p` is
