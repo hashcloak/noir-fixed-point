@@ -117,10 +117,10 @@ impl Quantized {
         other.assert_bitsize::<63>();
         let mut temp: Field = self.x * other.x;
 
-        // Scaling down by converting to byte array and chopping off the needed amount of bytes
+        // Scale down by dividing by 2^16
         // Since the scale is a multiple of 2^8, this will scale it down correctly.
         // Note that we have to take care of the case that the value is negative; in that case we flip the sign
-        // temporarily, and flip it back at the end. Otherwise the chopping won't work.
+        // temporarily, and flip it back at the end. Otherwise the division
 
         // Check whether we're working with a negative value
         let negative = is_negative(temp);
