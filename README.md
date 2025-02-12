@@ -5,7 +5,7 @@ This is an optimized fixed point arithmetic library designed for scale 2^-16. It
 ## Usage
 
 
-To create a fixed-point number, multiply the original value by the scale 2^16 and store the resulting integer:
+To create a fixed-point number, divide the original value by 2^16 and store the resulting integer:
 ```rust
 let value = Quantized::new(65536); // Represents 65536 / 2^16 = 1.0
 let small_value = Quantized::new(32768); // Represents 32768 / 2^16 = 0.5
