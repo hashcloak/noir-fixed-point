@@ -1,11 +1,11 @@
 # Fixed-Point Arithmetic Library
 
-This is an optimized fixed point arithmetic library designed for scales 2^-8, 2^-16, 2^-24. It supports signed fixed-point numbers with a specific scale of 2^(8⋅factor) and provides efficient implementations of standard arithmetic operations such as addition, subtraction, and multiplication.
+This is an optimized fixed point arithmetic library designed for scale 2^-16. It supports signed fixed-point numbers with a specific scale of 2^-16 and provides efficient implementations of standard arithmetic operations such as addition, subtraction, and multiplication.
 
 ## Usage
 
 
-To create a fixed-point number, multiply the original value by the scale (e.g., 2^16) and store the resulting integer:
+To create a fixed-point number, multiply the original value by the scale 2^16 and store the resulting integer:
 ```rust
 let value = Quantized::new(65536); // Represents 65536 / 2^16 = 1.0
 let small_value = Quantized::new(32768); // Represents 32768 / 2^16 = 0.5
