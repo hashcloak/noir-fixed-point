@@ -56,14 +56,18 @@ pub struct Quantized {
 
 // returns 1 for a negative element, 0 for a positive element
 // A Quantized element is negative if the upper bits are set, so this is what we check for.
-// NOTE: Make sure that the value that the field contains has maximum 126 bits.
-// If the element contains more than 126 bits either way, this function cannot correctly indicate
-// whether it's negative or not.
+// NOTE: this asserts the field contains has maximum 126 bits. If the element contains more than
+// 126 bits either way, this function cannot correctly indicate whether it's negative or not.
 fn is_negative(x: Field) -> Field {
-    let (_, higher_bytes) = decompose(x);
+    let (lower_bytes, higher_bytes) = decompose(x);
     if higher_bytes == 0 {
+        // Make sure the number is not overflowing the 126 bits
+        x.assert_max_bit_size::<126>();
         0
     } else {
+        // The higher bytes are filled, but we also have to make sure the
+        // lower bytes are not
+        assert(lower_bytes == 0);
         1
     }
 }
@@ -75,11 +79,14 @@ impl Quantized {
     // 128 and 126 bits
     pub fn assert_bitsize<let bitsize: u32>(self: Self) {
         // Decomposes into two 128 bits chunks
-        let (_, higher_bytes) = decompose(self.x);
+        let (lower_bytes, higher_bytes) = decompose(self.x);
         if higher_bytes == 0 {
             // positive number
             self.x.assert_max_bit_size::<bitsize>();
         } else {
+            // The higher bytes are filled, but we also have to make sure the
+            // lower bytes are not
+            assert(lower_bytes == 0);
             // negative number
             (-self.x).assert_max_bit_size::<bitsize>();
         }
