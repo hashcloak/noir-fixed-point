@@ -2,27 +2,21 @@ use std::cmp::Ordering;
 use std::field::bn254::decompose;
 use std::ops::{Add, Div, Mul, Sub};
 
-// IMPORTANT: This library is designed to work with a scale factor of 2^(8*factor).
+// IMPORTANT: This library is designed to work with a fixed scale factor of 2^16
 // See further explanation in the `Quantized` struct comments below.
-global factor: u32 = 2;
-global scale: Field = 65536; // 2^(8*2) = 2^16
-
-/////////// Other options:
-// global factor = 1
-// global scale = 256; // 2^(8*1) = 2^8
-
-// global factor = 3
-// global scale = 16777216; // 2^(8*3) = 2^24
-/////////// END Other options
+global scale: Field = 65536; // 2^16
 
 // A signed fixed-point number `x` is represented in a single Field element.
 //
 // Representation Overview:
-// A finite Field has 254 bits of "space". We represent positive fixed-point numbers
-// in the first half of these bits and negative fixed-point numbers in the second half.
-// Here's a visualization of the field element:
-// - Positive values have bits set in the lower part: |x,x,x,x,..,x, ... ,_,_,_,_|
-// - Negative values have bits set in the upper part: |_,_,_,_, .. x,x,x,..,x|
+// A Field element is a type with 254 bits.
+// We only use the first 126 or the last 126 bits.
+// A positive number is within the first 126 bits.
+// A negative numbers is within the last 126 bits.
+// The "middle" 2 bits that are left over, should not be used.
+// - Positive values have bits set in the lower part: |x_0,x_1,x_2,..,x_125, ... ,_,_,_,_|
+// - Negative values have bits set in the upper part: |_,_,_,_, .. x_128,x_129,..,x_253|
+// So following above visual, x_126 and x_127 MUST be 0
 //
 // Modular arithmetic ensures correct handling of signed fixed-point numbers by wrapping
 // values around the field's modulus. For example, subtracting 5 from 3 in a field with
@@ -31,7 +25,7 @@ global scale: Field = 65536; // 2^(8*2) = 2^16
 //
 // Scaling:
 // Since fields do not inherently support decimal values, the fixed-point representation
-// uses scaling. For example, a scale of 2^-16 means that:
+// uses a scale of 2^-16. This means that:
 // - `Quantized { x: 1 }` represents the value 1/2^16.
 // - To represent an original value, divide it by the scale, truncate, and store the result.
 // Example:
@@ -39,12 +33,12 @@ global scale: Field = 65536; // 2^(8*2) = 2^16
 // - Scaled value: 0.001 * 2^16 = 65.536
 // - Truncated result: 65 (stored as `Quantized { x: 65 }`)
 //
-// Range and Precision:
-// A `Quantized` value can have a maximum of 60 bits, leaving room for additional operations
-// like multiplications and additions. This limits the stored value to the range:
-//   [-2^60 + 1, 2^60 - 1] (approximately -1.15e18 to 1.15e18).
-// The unscaled range is therefore:
-//   [-2^60/scale, 2^60/scale].
+// Overflow and overflow prevention:
+// To make sure the arithmetic performed on a value will not overflow, the library contains
+// bitsize checks that prevent numbers from growing larger than 126 bits. More concretely:
+// - multiplication: inputs must have bitsize <= 63
+// - addition: inputs must have bitsize <=125
+// - subtraction: inputs must have bitsize <=125
 //
 // Conversion Steps to `Quantized`:
 // 1. Check if the original value `x` is negative. If negative, use (p - |x|), where `p` is
@@ -60,47 +54,80 @@ pub struct Quantized {
     pub x: Field,
 }
 
-// returns 1 for true, 0 for false (checking for this is cheaper than working with a bool)
+// returns 1 for a negative element, 0 for a positive element
 // A Quantized element is negative if the upper bits are set, so this is what we check for.
-// Make sure that the value that the field contains has maximum ~127 bits
-// (otherwise a positive value will "overflow" into the higher bits, as well as a negative
-// value would overflow into lower bits)
-pub fn is_negative(x: Field) -> Field {
-    let (_, higher_bytes) = decompose(x);
+// NOTE: this asserts the field contains has maximum 126 bits. If the element contains more than
+// 126 bits either way, this function cannot correctly indicate whether it's negative or not.
+fn is_negative(x: Field) -> Field {
+    let (lower_bytes, higher_bytes) = decompose(x);
     if higher_bytes == 0 {
+        // Make sure the number is not overflowing the 126 bits
+        x.assert_max_bit_size::<126>();
         0
     } else {
+        // The higher bytes are filled, but we also have to make sure the
+        // lower bytes are not
+        assert(lower_bytes == 0);
         1
     }
 }
 
 impl Quantized {
+    // Assert that number of bits <= bitsize
+    // if quantized is negative, it counts the bits backwards
+    // NOTE: this works only for bitsize <= 126, because decompose gives us
+    // 128 and 126 bits
+    pub fn assert_bitsize<let bitsize: u32>(self: Self) {
+        // Decomposes into two 128 bits chunks
+        let (lower_bytes, higher_bytes) = decompose(self.x);
+        if higher_bytes == 0 {
+            // positive number
+            self.x.assert_max_bit_size::<bitsize>();
+        } else {
+            // The higher bytes are filled, but we also have to make sure the
+            // lower bytes are not
+            assert(lower_bytes == 0);
+            // negative number
+            (-self.x).assert_max_bit_size::<bitsize>();
+        }
+    }
 
     pub fn zero() -> Self {
         Quantized { x: 0 }
     }
 
     pub fn new(x: Field) -> Self {
-        Self { x: x }
+        let res = Self { x: x };
+        res.assert_bitsize::<126>();
+        res
     }
 
     fn add(self: Self, other: Self) -> Self {
+        // To prevent overflow, allow max 125 bits for both inputs
+        self.assert_bitsize::<125>();
+        other.assert_bitsize::<125>();
         Quantized { x: self.x + other.x } // if one is negative, this wraps around automatically
     }
 
     fn sub(self: Self, other: Self) -> Self {
+        // To prevent overflow, allow max 125 bits for both inputs
+        self.assert_bitsize::<125>();
+        other.assert_bitsize::<125>();
         Quantized { x: self.x - other.x }
     }
 
     fn mul(self: Self, other: Self) -> Self {
+        // To prevent overflow, allow max 63 bits for both inputs
         // Perform multiplication of the underlying field elements
         // This doubles the scale.
+        self.assert_bitsize::<63>();
+        other.assert_bitsize::<63>();
         let mut temp: Field = self.x * other.x;
 
-        // Scaling down by converting to byte array and chopping off the needed amount of bytes
+        // Scale down by dividing by 2^16
         // Since the scale is a multiple of 2^8, this will scale it down correctly.
         // Note that we have to take care of the case that the value is negative; in that case we flip the sign
-        // temporarily, and flip it back at the end. Otherwise the chopping won't work.
+        // temporarily, and flip it back at the end. Otherwise the division doesn't work
 
         // Check whether we're working with a negative value
         let negative = is_negative(temp);
@@ -113,36 +140,36 @@ impl Quantized {
             )
             + temp;
 
-        let mut bytes: [u8; 32] = temp.to_be_bytes();
+        // Division by 2^16, code as suggested by Tom French @TomAFrench
+        // Cast x to a u16 to preserve only the lowest 16 bits.
+        let lowest_16_bits = temp as u16;
 
-        // Truncate the bytes to scale down by 2^(8 * factor)
-        // This effectively "chops off" the least significant <factor> bytes
-        let mut truncated: [u8; 32] = [0; 32];
-        for i in 0..30 {
-            truncated[i + factor] = bytes[i];
-        }
+        // Subtract off the lowest 16 bits so they are cleared.
+        let temp_with_cleared_lower_bits = temp - lowest_16_bits as Field;
 
-        // Reconstruct the field element from the truncated bytes
-        let mut new_x: Field = Field::from_be_bytes::<32>(truncated);
+        // The lowest 16 bits are clear, `x_with_cleared_lower_bits` is divisible by `65536`,
+        // therefore field division is equivalent to integer division.
+        let mut final_res: Field = temp_with_cleared_lower_bits / 65536;
 
         // If the result was originally negative, flip the sign back
-        new_x = negative
+        final_res = negative
             * (
                 21888242871839275222246405745257275088548364400416034343698204186575808495616
-                    - new_x
+                    - final_res
                     + 1
-                    - new_x
+                    - final_res
             )
-            + new_x;
+            + final_res;
 
         // Return the result as a new Quantized instance
-        Quantized { x: new_x }
+        Quantized { x: final_res }
     }
 
     fn div(self: Self, other: Self) -> Self {
         // Ensure `other` is not zero
         assert(other.x != 0, "Division by zero is not allowed.");
-
+        self.assert_bitsize::<109>(); // will be multiplied by scale later, so we allow 126-17 bits
+        other.assert_bitsize::<126>(); // standard bitsize check
         // Flip signs of numerator and denominator if negative, work with their absolute values
         let mut numerator = self.x;
         let mut denominator = other.x;
