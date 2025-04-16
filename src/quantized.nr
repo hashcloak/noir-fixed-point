@@ -65,9 +65,6 @@ fn is_negative(x: Field) -> Field {
         x.assert_max_bit_size::<126>();
         0
     } else {
-        // The higher bytes are filled, but we also have to make sure the
-        // lower bytes are not
-        assert(lower_bytes == 0);
         1
     }
 }
@@ -84,9 +81,6 @@ impl Quantized {
             // positive number
             self.x.assert_max_bit_size::<bitsize>();
         } else {
-            // The higher bytes are filled, but we also have to make sure the
-            // lower bytes are not
-            assert(lower_bytes == 0);
             // negative number
             (-self.x).assert_max_bit_size::<bitsize>();
         }
@@ -250,13 +244,13 @@ impl Ord for Quantized {
     fn cmp(self: Self, other: Self) -> Ordering {
         if self.x == other.x {
             Ordering::equal()
-        }
-
-        let (_, sub_hi) = decompose(self.x - other.x);
-        if (sub_hi == 0) {
-            Ordering::greater()
         } else {
-            Ordering::less()
+            let (_, sub_hi) = decompose(self.x - other.x);
+            if sub_hi == 0 {
+                Ordering::greater()
+            } else {
+                Ordering::less()
+            }
         }
     }
 }
